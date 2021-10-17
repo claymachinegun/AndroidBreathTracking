@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layout>
+
+    <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@{cycle.getDescription()}"
+            android:typeface="@{Typeface.defaultFromStyle(cycle.bold ? Typeface.BOLD : Typeface.NORMAL)}"></TextView>
+    </LinearLayout>
+
+    <data>
+
+        <import
+            alias="Typeface"
+            type="android.graphics.Typeface" />
+
+        <variable
+            name="cycle"
+            type="com.example.yacupmobilea.ui.main.BreathCycleRow" />
+    </data>
+</layout>
