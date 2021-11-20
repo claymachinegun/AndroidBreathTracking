@@ -4,17 +4,19 @@ import android.media.AudioFormat;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
 
-import java.util.Arrays;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 /**
  * Get raw audio input from phone mic
  */
 public class AudioRecorder implements IAudioSource {
-    private OnFrameCaptured onFrameCapturedListener;
-    private AudioRecord audioRecorder;
-    private int readSize;
-    private float[] floatBuffer;
-    private boolean isRunning = false;
+    private volatile OnFrameCaptured onFrameCapturedListener;
+    private final AudioRecord audioRecorder;
+    private final int readSize;
+    private final ExecutorService executorService;
+    private Future currentRecordSession;
 
     public AudioRecorder() {
         this.audioRecorder = new AudioRecord(
@@ -24,7 +26,8 @@ public class AudioRecorder implements IAudioSource {
                 AudioFormat.ENCODING_PCM_FLOAT,
                 AudioRecord.getMinBufferSize(44100, AudioFormat.CHANNEL_IN_DEFAULT, AudioFormat.ENCODING_PCM_FLOAT));
         this.readSize = 512;
-        this.floatBuffer = new float[readSize];
+        this.executorService = Executors.newSingleThreadExecutor();
+        this.audioRecorder.setPositionNotificationPeriod(1);
     }
 
     public void setOnFrameCapturedListener(OnFrameCaptured onFrameCapturedListener) {
@@ -32,24 +35,37 @@ public class AudioRecorder implements IAudioSource {
     }
 
     public void start() {
-        this.audioRecorder.startRecording();
-        isRunning = true;
-        Thread readingThread = new Thread(() -> {
-            while (isRunning) {
-                int data = audioRecorder.read(floatBuffer, 0, readSize, AudioRecord.READ_BLOCKING);
-                if (data == readSize) {
-                    if (onFrameCapturedListener != null) {
-                        onFrameCapturedListener.onFrame(Arrays.copyOf(floatBuffer, readSize));
+        if (currentRecordSession != null) {
+            stop();
+        }
+        currentRecordSession = executorService.submit(() -> {
+            audioRecorder.startRecording();
+            while (!Thread.currentThread().isInterrupted()) {
+                float[] floatBuffer = new float[readSize];
+                int dataSize = audioRecorder.read(floatBuffer, 0, readSize, AudioRecord.READ_BLOCKING);
+                if (dataSize == readSize) {
+                    OnFrameCaptured listener = onFrameCapturedListener;
+                    if (listener != null) {
+                        listener.onFrame(floatBuffer);
                     }
                 }
             }
+            audioRecorder.stop();
         });
-        readingThread.start();
+
     }
 
     public void stop() {
-        this.isRunning = false;
-        this.audioRecorder.stop();
+        if (this.currentRecordSession != null) {
+            this.currentRecordSession.cancel(true);
+            this.currentRecordSession = null;
+        }
+    }
+
+    public void cleanUp() {
+        stop();
+        executorService.shutdown();
+        audioRecorder.release();
     }
 
 }
